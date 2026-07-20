@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus - Full Stack Project Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        dark: { 900: '#0f1115', 800: '#161920', 700: '#1f232b', 600: '#2e3440' },
+                        primary: '#6366f1',
+                        primaryHover: '#4f46e5',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0f1115; color: #e5e7eb; overflow: hidden; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #161920; }
+        ::-webkit-scrollbar-thumb { background: #2e3440; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+        
+        .task-card.dragging { opacity: 0.4; border: 2px dashed #6366f1; transform: scale(0.98); }
+        .column-dropzone.drag-over { background-color: rgba(99, 102, 241, 0.1); border: 2px dashed #6366f1; }
+        
+        /* Toast Animation */
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        .toast-exit { animation: slideOut 0.3s ease-in forwards; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col font-sans">
+
+    <div id="app" class="h-full w-full flex flex-col">
+        
+        <!-- Header (Hidden on Auth View) -->
+        <header id="main-header" class="hidden bg-dark-800 border-b border-dark-600 p-4 shrink-0 flex justify-between items-center z-10">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="appState.navigate('dashboard')">
+                <div class="w-8 h-8 rounded bg-primary flex items-center justify-center text-white font-bold">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                </div>
+                <h1 class="text-xl font-bold tracking-wide">Nexus<span class="text-primary text-sm ml-1">Projects</span></h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="current-username" class="text-sm font-medium text-gray-400"></span>
+                <button onclick="appState.logout()" class="text-sm px-3 py-1.5 rounded bg-dark-700 hover:bg-red-500/20 hover:text-red-400 transition-colors">Logout</button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-hidden relative">
+            
+            <!-- VIEW: Auth -->
+            <div id="view-auth" class="absolute inset-0 flex items-center justify-center bg-dark-900 z-50">
+                <div class="bg-dark-800 p-8 rounded-xl shadow-2xl border border-dark-600 w-full max-w-md">
+                    <div class="flex justify-center mb-6">
+                        <div class="w-12 h-12 rounded bg-primary flex items-center justify-center text-white font-bold">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                        </div>
+                    </div>
+                    <h2 class="text-2xl font-bold text-center mb-2">Welcome to Nexus</h2>
+                    <p class="text-center text-gray-400 mb-6 text-sm">Simulated Full-Stack Authentication</p>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Username</label>
+                            <input type="text" id="auth-username" class="w-full bg-dark-700 border border-dark-600 rounded-lg p-2.5 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Enter any username to login/register">
+                        </div>
+                        <button onclick="appState.login()" class="w-full bg-primary hover:bg-primaryHover text-white font-semibold py-2.5 rounded-lg transition-colors">
+                            Continue to App
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Dashboard -->
+            <div id="view-dashboard" class="hidden absolute inset-0 overflow-y-auto p-8">
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex justify-between items-center mb-8">
+                        <h2 class="text-2xl font-bold">Your Projects</h2>
+                        <button onclick="ui.openModal('create-project-modal')" class="bg-primary hover:bg-primaryHover text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            New Project
+                        </button>
+                    </div>
+                    <div id="project-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Projects injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Board -->
+            <div id="view-board" class="hidden absolute inset-0 flex flex-col p-6">
+                <div class="mb-6 flex justify-between items-center shrink-0">
+                    <div>
+                        <button onclick="appState.navigate('dashboard')" class="text-gray-400 hover:text-white text-sm flex items-center gap-1 mb-2 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            Back to Projects
+                        </button>
+                        <h2 id="board-project-title" class="text-2xl font-bold">Project Name</h2>
+                        <p class="text-sm text-gray-400 mt-1">Group collaboration workspace</p>
+                    </div>
+                    <button onclick="ui.openModal('create-task-modal')" class="bg-dark-700 hover:bg-dark-600 border border-dark-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add Task
+                    </button>
+                </div>
+
+                <div class="flex-1 flex gap-6 overflow-x-auto pb-4 h-full">
+                    <!-- To Do Column -->
+                    <div class="w-80 flex flex-col bg-dark-800 rounded-xl border border-dark-600 shrink-0 h-full">
+                        <div class="p-4 border-b border-dark-600 flex justify-between items-center">
+                            <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-gray-400"></span> To Do</h3>
+                            <span id="count-todo" class="text-xs bg-dark-700 px-2 py-1 rounded-full text-gray-400">0</span>
+                        </div>
+                        <div class="column-dropzone flex-1 p-3 overflow-y-auto flex flex-col gap-3 transition-colors" data-status="todo" id="col-todo"></div>
+                    </div>
+
+                    <!-- In Progress Column -->
+                    <div class="w-80 flex flex-col bg-dark-800 rounded-xl border border-dark-600 shrink-0 h-full">
+                        <div class="p-4 border-b border-dark-600 flex justify-between items-center">
+                            <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-primary"></span> In Progress</h3>
+                            <span id="count-in_progress" class="text-xs bg-dark-700 px-2 py-1 rounded-full text-gray-400">0</span>
+                        </div>
+                        <div class="column-dropzone flex-1 p-3 overflow-y-auto flex flex-col gap-3 transition-colors" data-status="in_progress" id="col-in_progress"></div>
+                    </div>
+
+                    <!-- Done Column -->
+                    <div class="w-80 flex flex-col bg-dark-800 rounded-xl border border-dark-600 shrink-0 h-full">
+                        <div class="p-4 border-b border-dark-600 flex justify-between items-center">
+                            <h3 class="font-semibold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span> Done</h3>
+                            <span id="count-done" class="text-xs bg-dark-700 px-2 py-1 rounded-full text-gray-400">0</span>
+                        </div>
+                        <div class="column-dropzone flex-1 p-3 overflow-y-auto flex flex-col gap-3 transition-colors" data-status="done" id="col-done"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals Container -->
+    <div id="modals">
+        
+        <!-- Create Project Modal -->
+        <div id="create-project-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-md p-6">
+                <h2 class="text-xl font-bold mb-4">Create New Project</h2>
+                <input type="text" id="new-project-title" class="w-full bg-dark-700 border border-dark-600 rounded-lg p-2.5 text-white mb-4" placeholder="Project Name">
+                <div class="flex justify-end gap-3">
+                    <button onclick="ui.closeModal('create-project-modal')" class="px-4 py-2 text-gray-400 hover:text-white">Cancel</button>
+                    <button onclick="appState.createProject()" class="px-4 py-2 bg-primary hover:bg-primaryHover rounded-lg text-white font-medium">Create</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Task Modal -->
+        <div id="create-task-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-md p-6">
+                <h2 class="text-xl font-bold mb-4">Add Task</h2>
+                <input type="text" id="new-task-title" class="w-full bg-dark-700 border border-dark-600 rounded-lg p-2.5 text-white mb-3" placeholder="Task Title">
+                <textarea id="new-task-desc" rows="3" class="w-full bg-dark-700 border border-dark-600 rounded-lg p-2.5 text-white mb-4" placeholder="Description"></textarea>
+                <div class="flex justify-end gap-3">
+                    <button onclick="ui.closeModal('create-task-modal')" class="px-4 py-2 text-gray-400 hover:text-white">Cancel</button>
+                    <button onclick="appState.createTask()" class="px-4 py-2 bg-primary hover:bg-primaryHover rounded-lg text-white font-medium">Add Task</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Details & Comments Modal -->
+        <div id="task-detail-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+            <div class="bg-dark-800 border border-dark-600 rounded-xl w-full max-w-2xl h-[80vh] flex flex-col">
+                <div class="p-5 border-b border-dark-600 flex justify-between items-start shrink-0">
+                    <div>
+                        <h2 id="detail-task-title" class="text-xl font-bold mb-1">Task Title</h2>
+                        <div class="flex gap-4 items-center">
+                            <span class="text-sm text-gray-400 flex items-center gap-1">
+                                Status: <span id="detail-task-status" class="uppercase text-xs font-semibold text-primary">TODO</span>
+                            </span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm text-gray-400">Assignee:</span>
+                                <select id="detail-task-assignee" onchange="appState.assignTask(this.value)" class="bg-dark-700 border border-dark-600 rounded text-sm px-2 py-1 outline-none focus:border-primary">
+                                    <option value="">Unassigned</option>
+                                    <!-- Options injected via JS -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="ui.closeModal('task-detail-modal')" class="text-gray-400 hover:text-white p-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+                
+                <div class="p-5 overflow-y-auto flex-1 flex flex-col md:flex-row gap-6">
+                    <div class="w-full md:w-1/2">
+                        <h3 class="font-semibold text-gray-300 mb-2">Description</h3>
+                        <p id="detail-task-desc" class="text-gray-400 text-sm whitespace-pre-wrap leading-relaxed">Description goes here.</p>
+                    </div>
+                    
+                    <div class="w-full md:w-1/2 flex flex-col border-l border-dark-600 md:pl-6 h-full">
+                        <h3 class="font-semibold text-gray-300 mb-4 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            Comments
+                        </h3>
+                        <div id="comments-container" class="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+                            <!-- Comments injected here -->
+                        </div>
+                        <div class="mt-auto shrink-0 relative">
+                            <input type="text" id="new-comment-input" placeholder="Write a comment..." class="w-full bg-dark-700 border border-dark-600 rounded-lg pl-3 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-primary" onkeypress="if(event.key === 'Enter') appState.addComment()">
+                            <button onclick="appState.addComment()" class="absolute right-2 top-2 text-primary hover:text-primaryHover">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[60] flex flex-col gap-3 pointer-events-none"></div>
+
+    <script>
+        // --- 1. Mock Database (localStorage wrapper) ---
+        const db = {
+            init() {
+                if (!localStorage.getItem('nx_users')) {
+                    // Seed initial mock data
+                    const demoUsers = [{id: 'u1', username: 'Alex'}, {id: 'u2', username: 'Sarah'}, {id: 'u3', username: 'Mike'}];
+                    localStorage.setItem('nx_users', JSON.stringify(demoUsers));
+                    localStorage.setItem('nx_projects', JSON.stringify([{id: 'p1', title: 'Website Redesign', ownerId: 'u1'}]));
+                    localStorage.setItem('nx_tasks', JSON.stringify([
+                        {id: 't1', projectId: 'p1', title: 'Setup Repo', desc: 'Initialize git repository.', status: 'done', assigneeId: 'u1'},
+                        {id: 't2', projectId: 'p1', title: 'Design Mockups', desc: 'Figma designs for landing page.', status: 'in_progress', assigneeId: 'u2'},
+                        {id: 't3', projectId: 'p1', title: 'Implement Auth', desc: 'Build login view.', status: 'todo', assigneeId: ''}
+                    ]));
+                    localStorage.setItem('nx_comments', JSON.stringify([
+                        {id: 'c1', taskId: 't2', userId: 'u2', text: 'Started wireframes today.', timestamp: new Date().toISOString()}
+                    ]));
+                }
+            },
+            get(table) { return JSON.parse(localStorage.getItem(`nx_${table}`)) || []; },
+            set(table, data) { localStorage.setItem(`nx_${table}`, JSON.stringify(data)); },
+            generateId() { return Math.random().toString(36).substr(2, 9); }
+        };
+
+        // --- 2. Notification Service (Simulating WebSockets) ---
+        const NotificationService = {
+            timer: null,
+            start() {
+                if(this.timer) clearInterval(this.timer);
+                // Simulate receiving real-time updates from other team members every 15-30 seconds
+                this.timer = setInterval(() => {
+                    const users = ['Sarah', 'Mike', 'David', 'Elena'];
+                    const actions = ['commented on a task', 'moved a task to Done', 'assigned a task to you', 'created a new project'];
+                    const u = users[Math.floor(Math.random() * users.length)];
+                    const a = actions[Math.floor(Math.random() * actions.length)];
+                    ui.showToast(`${u} ${a}`, 'info');
+                }, 20000 + Math.random() * 10000); 
+            },
+            stop() { clearInterval(this.timer); }
+        };
+
+        // --- 3. UI Controller ---
+        const ui = {
+            showView(viewId) {
+                document.getElementById('view-auth').classList.add('hidden');
+                document.getElementById('view-dashboard').classList.add('hidden');
+                document.getElementById('view-board').classList.add('hidden');
+                document.getElementById('main-header').classList.remove('hidden');
+                
+                if (viewId === 'auth') {
+                    document.getElementById('main-header').classList.add('hidden');
+                }
+                
+                document.getElementById(`view-${viewId}`).classList.remove('hidden');
+            },
+            openModal(modalId) {
+                const modal = document.getElementById(modalId);
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            },
+            closeModal(modalId) {
+                const modal = document.getElementById(modalId);
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            },
+            showToast(message, type = 'success') {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                toast.className = `toast-enter flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-sm font-medium border border-dark-600 bg-dark-800 text-white`;
+                
+                const icon = type === 'info' 
+                    ? `<svg class="text-blue-400" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`
+                    : `<svg class="text-green-400" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
+                
+                toast.innerHTML = `${icon} <span>${message}</span>`;
+                container.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.classList.replace('toast-enter', 'toast-exit');
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            },
+            getInitials(name) { return name ? name.substring(0, 2).toUpperCase() : '??'; }
+        };
+
+        // --- 4. Application State & Business Logic ---
+        const appState = {
+            currentUser: null,
+            currentProject: null,
+            activeTask: null,
+            draggedTaskId: null,
+
+            init() {
+                db.init();
+                const savedUser = sessionStorage.getItem('nx_activeUser');
+                if (savedUser) {
+                    this.currentUser = JSON.parse(savedUser);
+                    this.navigate('dashboard');
+                } else {
+                    this.navigate('auth');
+                }
+                this.setupDragAndDrop();
+            },
+
+            login() {
+                const usernameInput = document.getElementById('auth-username').value.trim();
+                if (!usernameInput) return ui.showToast('Please enter a username', 'error');
+
+                let users = db.get('users');
+                let user = users.find(u => u.username.toLowerCase() === usernameInput.toLowerCase());
+                
+                if (!user) {
+                    // Auto-register mock for simplicity
+                    user = { id: 'u_' + db.generateId(), username: usernameInput };
+                    users.push(user);
+                    db.set('users', users);
+                    ui.showToast('New account created!', 'success');
+                } else {
+                    ui.showToast('Logged in successfully', 'success');
+                }
+
+                this.currentUser = user;
+                sessionStorage.setItem('nx_activeUser', JSON.stringify(user));
+                this.navigate('dashboard');
+            },
+
+            logout() {
+                this.currentUser = null;
+                sessionStorage.removeItem('nx_activeUser');
+                NotificationService.stop();
+                this.navigate('auth');
+            },
+
+            navigate(view) {
+                if (view === 'auth') {
+                    ui.showView('auth');
+                } else if (view === 'dashboard') {
+                    document.getElementById('current-username').innerText = this.currentUser.username;
+                    this.renderProjects();
+                    ui.showView('dashboard');
+                    NotificationService.start();
+                } else if (view === 'board') {
+                    ui.showView('board');
+                }
+            },
+
+            renderProjects() {
+                const projects = db.get('projects');
+                const list = document.getElementById('project-list');
+                list.innerHTML = '';
+                
+                projects.forEach(p => {
+                    const el = document.createElement('div');
+                    el.className = 'bg-dark-800 border border-dark-600 rounded-xl p-5 hover:border-primary transition-colors cursor-pointer group shadow-sm';
+                    el.onclick = () => this.openProject(p);
+                    el.innerHTML = `
+                        <div class="w-10 h-10 rounded-lg bg-dark-700 flex items-center justify-center text-primary mb-4 group-hover:scale-110 transition-transform">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                        </div>
+                        <h3 class="font-bold text-lg mb-1">${p.title}</h3>
+                        <p class="text-xs text-gray-400">Team Workspace</p>
+                    `;
+                    list.appendChild(el);
+                });
+            },
+
+            createProject() {
+                const title = document.getElementById('new-project-title').value.trim();
+                if (!title) return;
+                
+                const projects = db.get('projects');
+                projects.push({ id: 'p_' + db.generateId(), title: title, ownerId: this.currentUser.id });
+                db.set('projects', projects);
+                
+                ui.closeModal('create-project-modal');
+                document.getElementById('new-project-title').value = '';
+                ui.showToast('Project created');
+                this.renderProjects();
+            },
+
+            openProject(project) {
+                this.currentProject = project;
+                document.getElementById('board-project-title').innerText = project.title;
+                this.renderBoard();
+                this.navigate('board');
+            },
+
+            renderBoard() {
+                const allTasks = db.get('tasks');
+                const pTasks = allTasks.filter(t => t.projectId === this.currentProject.id);
+                
+                const cols = { todo: [], in_progress: [], done: [] };
+                pTasks.forEach(t => cols[t.status].push(t));
+
+                ['todo', 'in_progress', 'done'].forEach(status => {
+                    const colEl = document.getElementById(`col-${status}`);
+                    document.getElementById(`count-${status}`).innerText = cols[status].length;
+                    colEl.innerHTML = '';
+                    
+                    cols[status].forEach(task => {
+                        const tEl = document.createElement('div');
+                        tEl.className = 'task-card bg-dark-700 p-3.5 rounded-lg border border-dark-600 cursor-grab hover:border-primary/50 shadow-sm relative group';
+                        tEl.draggable = true;
+                        tEl.id = task.id;
+                        
+                        const users = db.get('users');
+                        const assignee = users.find(u => u.id === task.assigneeId);
+                        const avatarHtml = assignee 
+                            ? `<div class="w-6 h-6 rounded-full bg-primary/20 text-primary border border-primary/30 flex items-center justify-center text-[10px] font-bold" title="${assignee.username}">${ui.getInitials(assignee.username)}</div>`
+                            : `<div class="w-6 h-6 rounded-full bg-dark-600 border border-dark-500 border-dashed flex items-center justify-center text-gray-500 text-[10px]" title="Unassigned">+</div>`;
+
+                        tEl.innerHTML = `
+                            <div class="font-medium text-sm text-gray-200 mb-1 leading-snug pr-6">${task.title}</div>
+                            ${task.desc ? `<p class="text-xs text-gray-500 mb-3 line-clamp-1">${task.desc}</p>` : '<div class="mb-2"></div>'}
+                            <div class="flex justify-between items-center mt-2 pt-2 border-t border-dark-600/50">
+                                <div class="flex items-center gap-1.5 text-xs text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    ${db.get('comments').filter(c => c.taskId === task.id).length}
+                                </div>
+                                ${avatarHtml}
+                            </div>
+                            <button onclick="event.stopPropagation(); appState.deleteTask('${task.id}')" class="absolute top-3 right-3 text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        `;
+                        
+                        // Events
+                        tEl.addEventListener('dragstart', (e) => {
+                            appState.draggedTaskId = task.id;
+                            tEl.classList.add('dragging');
+                            e.dataTransfer.setData('text/plain', task.id);
+                        });
+                        tEl.addEventListener('dragend', () => {
+                            tEl.classList.remove('dragging');
+                            document.querySelectorAll('.column-dropzone').forEach(c => c.classList.remove('drag-over'));
+                            appState.draggedTaskId = null;
+                        });
+                        tEl.onclick = () => this.openTaskDetails(task);
+
+                        colEl.appendChild(tEl);
+                    });
+                });
+            },
+
+            createTask() {
+                const title = document.getElementById('new-task-title').value.trim();
+                const desc = document.getElementById('new-task-desc').value.trim();
+                if (!title) return;
+
+                const tasks = db.get('tasks');
+                tasks.push({
+                    id: 't_' + db.generateId(),
+                    projectId: this.currentProject.id,
+                    title: title,
+                    desc: desc,
+                    status: 'todo',
+                    assigneeId: ''
+                });
+                db.set('tasks', tasks);
+                
+                ui.closeModal('create-task-modal');
+                document.getElementById('new-task-title').value = '';
+                document.getElementById('new-task-desc').value = '';
+                ui.showToast('Task added');
+                this.renderBoard();
+            },
+
+            deleteTask(taskId) {
+                const tasks = db.get('tasks');
+                db.set('tasks', tasks.filter(t => t.id !== taskId));
+                // Cleanup comments
+                const comments = db.get('comments');
+                db.set('comments', comments.filter(c => c.taskId !== taskId));
+                ui.showToast('Task deleted');
+                this.renderBoard();
+            },
+
+            setupDragAndDrop() {
+                document.querySelectorAll('.column-dropzone').forEach(zone => {
+                    zone.addEventListener('dragover', e => {
+                        e.preventDefault();
+                        zone.classList.add('drag-over');
+                    });
+                    zone.addEventListener('dragleave', () => {
+                        zone.classList.remove('drag-over');
+                    });
+                    zone.addEventListener('drop', e => {
+                        e.preventDefault();
+                        zone.classList.remove('drag-over');
+                        const newStatus = zone.getAttribute('data-status');
+                        
+                        if (this.draggedTaskId) {
+                            const tasks = db.get('tasks');
+                            const taskIndex = tasks.findIndex(t => t.id === this.draggedTaskId);
+                            if (taskIndex > -1 && tasks[taskIndex].status !== newStatus) {
+                                tasks[taskIndex].status = newStatus;
+                                db.set('tasks', tasks);
+                                this.renderBoard();
+                                ui.showToast(`Task moved to ${newStatus.replace('_', ' ')}`);
+                            }
+                        }
+                    });
+                });
+            },
+
+            openTaskDetails(task) {
+                this.activeTask = task;
+                document.getElementById('detail-task-title').innerText = task.title;
+                document.getElementById('detail-task-desc').innerText = task.desc || 'No description provided.';
+                document.getElementById('detail-task-status').innerText = task.status.replace('_', ' ');
+                
+                // Populate Assignee Dropdown
+                const users = db.get('users');
+                const select = document.getElementById('detail-task-assignee');
+                select.innerHTML = '<option value="">Unassigned</option>';
+                users.forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u.id;
+                    opt.innerText = u.username;
+                    if(u.id === task.assigneeId) opt.selected = true;
+                    select.appendChild(opt);
+                });
+
+                this.renderComments();
+                ui.openModal('task-detail-modal');
+            },
+
+            assignTask(userId) {
+                if(!this.activeTask) return;
+                const tasks = db.get('tasks');
+                const tIdx = tasks.findIndex(t => t.id === this.activeTask.id);
+                tasks[tIdx].assigneeId = userId;
+                db.set('tasks', tasks);
+                this.activeTask.assigneeId = userId;
+                this.renderBoard();
+                ui.showToast('Assignee updated');
+            },
+
+            renderComments() {
+                const allComments = db.get('comments');
+                const tComments = allComments.filter(c => c.taskId === this.activeTask.id).sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+                const container = document.getElementById('comments-container');
+                const users = db.get('users');
+                
+                container.innerHTML = '';
+                if(tComments.length === 0) {
+                    container.innerHTML = '<p class="text-xs text-gray-500 italic">No comments yet. Be the first to start the discussion!</p>';
+                    return;
+                }
+
+                tComments.forEach(c => {
+                    const user = users.find(u => u.id === c.userId) || {username: 'Unknown'};
+                    const isMe = user.id === this.currentUser.id;
+                    const date = new Date(c.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    
+                    const el = document.createElement('div');
+                    el.className = `flex gap-3 text-sm ${isMe ? 'flex-row-reverse' : ''}`;
+                    el.innerHTML = `
+                        <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white ${isMe ? 'bg-primary' : 'bg-dark-600'}">${ui.getInitials(user.username)}</div>
+                        <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[80%]">
+                            <span class="text-xs text-gray-500 mb-1">${user.username} <span class="opacity-50 ml-1">${date}</span></span>
+                            <div class="px-3 py-2 rounded-lg ${isMe ? 'bg-primary text-white rounded-tr-none' : 'bg-dark-700 text-gray-200 rounded-tl-none'} shadow-sm">
+                                ${c.text}
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(el);
+                });
+                container.scrollTop = container.scrollHeight;
+            },
+
+            addComment() {
+                const input = document.getElementById('new-comment-input');
+                const text = input.value.trim();
+                if(!text || !this.activeTask) return;
+
+                const comments = db.get('comments');
+                comments.push({
+                    id: 'c_' + db.generateId(),
+                    taskId: this.activeTask.id,
+                    userId: this.currentUser.id,
+                    text: text,
+                    timestamp: new Date().toISOString()
+                });
+                db.set('comments', comments);
+                
+                input.value = '';
+                this.renderComments();
+                this.renderBoard(); // Update comment count badge
+            }
+        };
+
+        // Bootstrap the app on load
+        window.addEventListener('DOMContentLoaded', () => {
+            appState.init();
+        });
+    </script>
+</body>
+</html>
